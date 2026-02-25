@@ -162,6 +162,14 @@ class ArxivPaper:
     
     @cached_property
     def tldr(self) -> str:
+        def looks_like_list(text: str) -> bool:
+            return re.search(r'(?m)^\s*(?:[-*•]|\d+[\.)]|[（(]?\d+[）)])\s+', text) is not None
+
+        def normalize_paragraph(text: str) -> str:
+            text = re.sub(r'\s*\n+\s*', ' ', text)
+            text = re.sub(r'\s{2,}', ' ', text)
+            return text.strip()
+
         introduction = ""
         conclusion = ""
         if self.tex is not None:
@@ -183,7 +191,13 @@ class ArxivPaper:
             if match:
                 conclusion = match.group(0)
         llm = get_llm()
-        prompt = """Given the title, abstract, introduction and the conclusion (if any) of a paper in latex format, generate a one-sentence TLDR summary in __LANG__:
+        prompt = """Given the title, abstract, introduction and the conclusion (if any) of a paper in latex format, generate a detailed TLDR in __LANG__.
+
+        Output requirements:
+        1) Output exactly one continuous paragraph.
+        2) Do NOT use bullet points, numbering, markdown lists, or section headers.
+        3) Use 4-6 sentences and include: research problem, key method, main findings/contributions, and limitation or application scope.
+        4) Only output the final paragraph.
         
         \\title{__TITLE__}
         \\begin{abstract}__ABSTRACT__\\end{abstract}
@@ -206,12 +220,37 @@ class ArxivPaper:
             messages=[
                 {
                     "role": "system",
-                    "content": "You are an assistant who perfectly summarizes scientific paper, and gives the core idea of the paper to the user.",
+                    "content": "You are an assistant who summarizes scientific papers with high fidelity. You must answer in one continuous paragraph and never use bullet points, numbering, markdown lists, or headings.",
                 },
                 {"role": "user", "content": prompt},
             ]
-        )
-        return tldr.content
+        ).content
+        tldr = normalize_paragraph(tldr)
+
+        if looks_like_list(tldr):
+            rewrite_prompt = f"""Rewrite the following summary into exactly one continuous paragraph in {llm.lang}.
+
+Requirements:
+1) No bullet points, numbering, markdown lists, or headings.
+2) Keep it detailed, 4-6 sentences.
+3) Preserve factual content, include problem, method, key results/contributions, and limitation/application scope.
+4) Output only the final paragraph.
+
+Summary to rewrite:
+{tldr}
+"""
+            tldr = llm.generate(
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "You rewrite technical summaries while preserving facts and strict output format.",
+                    },
+                    {"role": "user", "content": rewrite_prompt},
+                ]
+            ).content
+            tldr = normalize_paragraph(tldr)
+
+        return tldr
 
     @cached_property
     def affiliations(self) -> Optional[list[str]]:
