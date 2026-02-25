@@ -126,12 +126,6 @@ if __name__ == '__main__':
     add_argument('--receiver', type=str, help='Receiver email address')
     add_argument('--sender_password', type=str, help='Sender email password')
     add_argument(
-        "--use_llm_api",
-        type=bool,
-        help="Use OpenAI API to generate TLDR",
-        default=False,
-    )
-    add_argument(
         "--openai_api_key",
         type=str,
         help="OpenAI API key",
@@ -150,6 +144,12 @@ if __name__ == '__main__':
         default="gpt-4o",
     )
     add_argument(
+        "--embedding_model",
+        type=str,
+        help="Embedding Model Name for reranking",
+        default="text-embedding-3-small",
+    )
+    add_argument(
         "--language",
         type=str,
         help="Language of TLDR",
@@ -163,9 +163,7 @@ if __name__ == '__main__':
     )
     parser.add_argument('--debug', action='store_true', help='Debug mode')
     args = parser.parse_args()
-    assert (
-        not args.use_llm_api or args.openai_api_key is not None
-    )  # If use_llm_api is True, openai_api_key must be provided
+    assert args.openai_api_key is not None, "OPENAI_API_KEY is required. Local LLM mode has been removed."
     if args.debug:
         logger.remove()
         logger.add(sys.stdout, level="DEBUG")
@@ -189,15 +187,17 @@ if __name__ == '__main__':
           exit(0)
     else:
         logger.info("Reranking papers...")
-        papers = rerank_paper(papers, corpus)
+        papers = rerank_paper(
+            papers,
+            corpus,
+            api_key=args.openai_api_key,
+            base_url=args.openai_api_base,
+            model=args.embedding_model,
+        )
         if args.max_paper_num != -1:
             papers = papers[:args.max_paper_num]
-        if args.use_llm_api:
-            logger.info("Using OpenAI API as global LLM.")
-            set_global_llm(api_key=args.openai_api_key, base_url=args.openai_api_base, model=args.model_name, lang=args.language, thinking=args.thinking)
-        else:
-            logger.info("Using Local LLM as global LLM.")
-            set_global_llm(lang=args.language, thinking=args.thinking)
+        logger.info("Using API-based LLM as global LLM.")
+        set_global_llm(api_key=args.openai_api_key, base_url=args.openai_api_base, model=args.model_name, lang=args.language, thinking=args.thinking)
 
     html = render_email(papers)
     logger.info("Sending email...")

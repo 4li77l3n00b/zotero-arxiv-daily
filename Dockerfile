@@ -23,8 +23,6 @@ deb https://security.debian.org/debian-security bookworm-security main contrib n
 
 # 安装系统依赖（包括cron）
 RUN apt-get update && apt-get install -y \
-    build-essential \
-    cmake \
     git \
     cron \
     && rm -rf /var/lib/apt/lists/*
@@ -32,23 +30,12 @@ RUN apt-get update && apt-get install -y \
 # 复制项目文件
 COPY . .
 
-# 升级cmake
-RUN pip install --upgrade cmake
-ENV CC=/usr/bin/gcc
-ENV CXX=/usr/bin/g++
-
 # 安装Python依赖
 RUN pip install uv
 RUN uv sync
 
-# 创建日志目录和模型目录
+# 创建日志目录
 RUN mkdir -p /var/log/cron
-
-# 下载LLM模型 (如果使用本地LLM)
-RUN if [ "$USE_LLM_API" = "0" ]; then \
-    mkdir -p /app/models \
-    wget https://huggingface.co/Qwen/Qwen1.5-3B-Instruct-GGUF/resolve/main/qwen1.5-3b-instruct-q4_k_m.gguf -O /app/models/qwen.gguf; \
-    fi
 
 # 设置容器启动命令（由compose覆盖）
 CMD ["cd /app && /usr/local/bin/uv run main.py"]

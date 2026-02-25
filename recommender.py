@@ -1,19 +1,67 @@
-import numpy as np
-from sentence_transformers import SentenceTransformer
+import math
+from openai import OpenAI
 from paper import ArxivPaper
 from datetime import datetime
 
-def rerank_paper(candidate:list[ArxivPaper],corpus:list[dict],model:str='avsolatorio/GIST-small-Embedding-v0') -> list[ArxivPaper]:
-    encoder = SentenceTransformer(model)
-    #sort corpus by date, from newest to oldest
-    corpus = sorted(corpus,key=lambda x: datetime.strptime(x['data']['dateAdded'], '%Y-%m-%dT%H:%M:%SZ'),reverse=True)
-    time_decay_weight = 1 / (1 + np.log10(np.arange(len(corpus)) + 1))
-    time_decay_weight = time_decay_weight / time_decay_weight.sum()
-    corpus_feature = encoder.encode([paper['data']['abstractNote'] for paper in corpus])
-    candidate_feature = encoder.encode([paper.summary for paper in candidate])
-    sim = encoder.similarity(candidate_feature,corpus_feature) # [n_candidate, n_corpus]
-    scores = (sim * time_decay_weight).sum(axis=1) * 10 # [n_candidate]
-    for s,c in zip(scores,candidate):
-        c.score = s.item()
-    candidate = sorted(candidate,key=lambda x: x.score,reverse=True)
+def _embed_texts(client: OpenAI, model: str, texts: list[str], batch_size: int = 64) -> list[list[float]]:
+    embeddings = []
+    for i in range(0, len(texts), batch_size):
+        batch = texts[i:i + batch_size]
+        response = client.embeddings.create(model=model, input=batch)
+        embeddings.extend([item.embedding for item in response.data])
+    return embeddings
+
+
+def _cosine_similarity(vec_a: list[float], vec_b: list[float], norm_a: float, norm_b: float) -> float:
+    if norm_a == 0 or norm_b == 0:
+        return 0.0
+    dot = sum(a * b for a, b in zip(vec_a, vec_b))
+    return dot / (norm_a * norm_b)
+
+
+def rerank_paper(
+    candidate: list[ArxivPaper],
+    corpus: list[dict],
+    api_key: str,
+    base_url: str = None,
+    model: str = "text-embedding-3-small",
+) -> list[ArxivPaper]:
+    if len(candidate) == 0:
+        return candidate
+
+    if len(corpus) == 0:
+        for c in candidate:
+            c.score = 0.0
+        return candidate
+
+    client = OpenAI(api_key=api_key, base_url=base_url)
+
+    # sort corpus by date, from newest to oldest
+    corpus = sorted(corpus, key=lambda x: datetime.strptime(x['data']['dateAdded'], '%Y-%m-%dT%H:%M:%SZ'), reverse=True)
+
+    time_decay_weight = [1 / (1 + math.log10(i + 1)) for i in range(len(corpus))]
+    weight_sum = sum(time_decay_weight)
+    time_decay_weight = [w / weight_sum for w in time_decay_weight]
+
+    corpus_texts = [paper['data']['abstractNote'] for paper in corpus]
+    candidate_texts = [paper.summary for paper in candidate]
+    corpus_feature = _embed_texts(client, model, corpus_texts)
+    candidate_feature = _embed_texts(client, model, candidate_texts)
+
+    corpus_norms = [math.sqrt(sum(x * x for x in vec)) for vec in corpus_feature]
+
+    scores = []
+    for cand_vec in candidate_feature:
+        cand_norm = math.sqrt(sum(x * x for x in cand_vec))
+        similarities = [
+            _cosine_similarity(cand_vec, corp_vec, cand_norm, corp_norm)
+            for corp_vec, corp_norm in zip(corpus_feature, corpus_norms)
+        ]
+        score = sum(sim * w for sim, w in zip(similarities, time_decay_weight)) * 10
+        scores.append(score)
+
+    for s, c in zip(scores, candidate):
+        c.score = float(s)
+
+    candidate = sorted(candidate, key=lambda x: x.score, reverse=True)
     return candidate
