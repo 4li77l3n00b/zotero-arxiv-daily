@@ -24,7 +24,7 @@ def rerank_paper(
     corpus: list[dict],
     api_key: str,
     base_url: str = None,
-    model: str = "text-embedding-3-small",
+    model: str = "netease-youdao/bce-embedding-base_v1",
 ) -> list[ArxivPaper]:
     if len(candidate) == 0:
         return candidate
