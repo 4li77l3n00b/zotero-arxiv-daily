@@ -211,7 +211,7 @@ class ArxivPaper:
                 {"role": "user", "content": prompt},
             ]
         )
-        return tldr
+        return tldr.content
 
     @cached_property
     def affiliations(self) -> Optional[list[str]]:
@@ -243,7 +243,7 @@ class ArxivPaper:
                     },
                     {"role": "user", "content": prompt},
                 ]
-            )
+            ).content
 
             try:
                 affiliations = re.search(r'\[.*?\]', affiliations, flags=re.DOTALL).group(0)
