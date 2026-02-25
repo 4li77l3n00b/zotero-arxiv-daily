@@ -17,6 +17,14 @@ jobs:
       - name: Setup uv
         uses: astral-sh/setup-uv@v7
 
+      - name: Show checkout info
+        run: |
+          echo "repository var: ${{ vars.REPOSITORY }}"
+          echo "ref var: ${{ vars.REF }}"
+          git remote -v
+          git rev-parse --short HEAD
+          git log -1 --oneline
+
       - name: Run script
         env:
           ZOTERO_ID: ${{ secrets.ZOTERO_ID }}
@@ -35,5 +43,6 @@ jobs:
           OPENAI_API_BASE: ${{ secrets.OPENAI_API_BASE }}
           MODEL_NAME: ${{ secrets.MODEL_NAME }}
           LANGUAGE: ${{ vars.LANGUAGE }}
+          THINKING: ${{ vars.THINKING }}
         run: |
           uv run main.py
