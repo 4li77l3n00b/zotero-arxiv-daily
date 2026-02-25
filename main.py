@@ -147,7 +147,7 @@ if __name__ == '__main__':
         "--embedding_model",
         type=str,
         help="Embedding Model Name for reranking",
-        default="text-embedding-3-small",
+        default="netease-youdao/bce-embedding-base_v1",
     )
     add_argument(
         "--language",

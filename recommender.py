@@ -1,5 +1,6 @@
 import math
 from openai import OpenAI
+from openai import BadRequestError
 from paper import ArxivPaper
 from datetime import datetime
 
@@ -7,7 +8,13 @@ def _embed_texts(client: OpenAI, model: str, texts: list[str], batch_size: int =
     embeddings = []
     for i in range(0, len(texts), batch_size):
         batch = texts[i:i + batch_size]
-        response = client.embeddings.create(model=model, input=batch)
+        try:
+            response = client.embeddings.create(model=model, input=batch)
+        except BadRequestError as e:
+            raise ValueError(
+                f"Embedding model '{model}' is not available for current provider/base_url. "
+                "Please set EMBEDDING_MODEL to a supported one, e.g. BAAI/bge-large-zh-v1.5 for SiliconFlow."
+            ) from e
         embeddings.extend([item.embedding for item in response.data])
     return embeddings
 
