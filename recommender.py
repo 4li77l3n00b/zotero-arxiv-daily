@@ -1,21 +1,47 @@
 import math
+import re
 from openai import OpenAI
-from openai import BadRequestError
+from openai import BadRequestError, APIStatusError
 from paper import ArxivPaper
 from datetime import datetime
 
-def _embed_texts(client: OpenAI, model: str, texts: list[str], batch_size: int = 64) -> list[list[float]]:
+def _embed_texts(client: OpenAI, model: str, texts: list[str], batch_size: int = 32) -> list[list[float]]:
+    def parse_max_batch_size(message: str) -> int | None:
+        match = re.search(r"maximum allowed batch size\s*(\d+)", message)
+        if not match:
+            return None
+        return int(match.group(1))
+
     embeddings = []
-    for i in range(0, len(texts), batch_size):
-        batch = texts[i:i + batch_size]
+    i = 0
+    dynamic_batch_size = max(1, batch_size)
+    while i < len(texts):
+        batch = texts[i:i + dynamic_batch_size]
         try:
             response = client.embeddings.create(model=model, input=batch)
+            embeddings.extend([item.embedding for item in response.data])
+            i += len(batch)
+        except APIStatusError as e:
+            err_msg = str(e)
+            if e.status_code == 413:
+                max_batch = parse_max_batch_size(err_msg)
+                if max_batch is not None and max_batch < dynamic_batch_size:
+                    dynamic_batch_size = max(1, max_batch)
+                    continue
+                if dynamic_batch_size > 1:
+                    dynamic_batch_size = max(1, dynamic_batch_size // 2)
+                    continue
+            raise
         except BadRequestError as e:
+            err_msg = str(e)
+            if "Model does not exist" in err_msg or "code': 20012" in err_msg or 'code": 20012' in err_msg:
+                raise ValueError(
+                    f"Embedding model '{model}' is not available for current provider/base_url. "
+                    "Please set EMBEDDING_MODEL to a supported one, e.g. BAAI/bge-large-zh-v1.5 for SiliconFlow."
+                ) from e
             raise ValueError(
-                f"Embedding model '{model}' is not available for current provider/base_url. "
-                "Please set EMBEDDING_MODEL to a supported one, e.g. BAAI/bge-large-zh-v1.5 for SiliconFlow."
+                f"Embedding request failed for model '{model}': {e}"
             ) from e
-        embeddings.extend([item.embedding for item in response.data])
     return embeddings
 
 
