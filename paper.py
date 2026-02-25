@@ -191,12 +191,14 @@ class ArxivPaper:
             if match:
                 conclusion = match.group(0)
         llm = get_llm()
-        prompt = """Given the title, abstract, introduction and the conclusion (if any) of a paper in latex format, generate a detailed TLDR in __LANG__.
+        prompt = """Given the title, abstract, introduction and the conclusion (if any) of a paper in latex format, generate a concise TLDR in __LANG__.
 
         Output requirements:
         1) Output exactly one continuous paragraph.
         2) Do NOT use bullet points, numbering, markdown lists, or section headers.
-        3) Use 4-6 sentences and include: research problem, key method, main findings/contributions, and limitation or application scope.
+        3) Use 2-3 sentences, keep it compact and easy to scan.
+        4) Must cover all key points: research problem, key method, and main finding/contribution.
+        5) Keep total length around 70-120 words.
         4) Only output the final paragraph.
         
         \\title{__TITLE__}
@@ -220,7 +222,7 @@ class ArxivPaper:
             messages=[
                 {
                     "role": "system",
-                    "content": "You are an assistant who summarizes scientific papers with high fidelity. You must answer in one continuous paragraph and never use bullet points, numbering, markdown lists, or headings.",
+                    "content": "You are an assistant who writes concise but complete scientific TLDRs. You must answer in one continuous paragraph with 2-3 sentences and never use bullet points, numbering, markdown lists, or headings.",
                 },
                 {"role": "user", "content": prompt},
             ]
@@ -232,8 +234,8 @@ class ArxivPaper:
 
 Requirements:
 1) No bullet points, numbering, markdown lists, or headings.
-2) Keep it detailed, 4-6 sentences.
-3) Preserve factual content, include problem, method, key results/contributions, and limitation/application scope.
+2) Keep it concise: 2-3 sentences, around 70-120 words.
+3) Preserve factual content and include problem, method, and key result/contribution.
 4) Output only the final paragraph.
 
 Summary to rewrite:
