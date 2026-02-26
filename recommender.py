@@ -1,5 +1,6 @@
 import math
 import re
+import tiktoken
 from openai import OpenAI
 from openai import BadRequestError, APIStatusError
 from paper import ArxivPaper
@@ -12,11 +13,27 @@ def _embed_texts(client: OpenAI, model: str, texts: list[str], batch_size: int =
             return None
         return int(match.group(1))
 
+    def parse_max_tokens(message: str) -> int | None:
+        match = re.search(r"less than\s*(\d+)\s*tokens", message)
+        if not match:
+            return None
+        return int(match.group(1))
+
+    def truncate_to_tokens(text: str, max_tokens: int) -> str:
+        token_ids = encoding.encode(text)
+        if len(token_ids) <= max_tokens:
+            return text
+        return encoding.decode(token_ids[:max_tokens])
+
     embeddings = []
     i = 0
     dynamic_batch_size = max(1, batch_size)
+    max_tokens_per_text = None
+    encoding = tiktoken.get_encoding("cl100k_base")
     while i < len(texts):
         batch = texts[i:i + dynamic_batch_size]
+        if max_tokens_per_text is not None:
+            batch = [truncate_to_tokens(text, max_tokens_per_text) for text in batch]
         try:
             response = client.embeddings.create(model=model, input=batch)
             embeddings.extend([item.embedding for item in response.data])
@@ -30,6 +47,14 @@ def _embed_texts(client: OpenAI, model: str, texts: list[str], batch_size: int =
                     continue
                 if dynamic_batch_size > 1:
                     dynamic_batch_size = max(1, dynamic_batch_size // 2)
+                    continue
+                max_tokens = parse_max_tokens(err_msg)
+                if max_tokens is not None:
+                    next_limit = max(32, max_tokens - 8)
+                    if max_tokens_per_text is None or next_limit < max_tokens_per_text:
+                        max_tokens_per_text = next_limit
+                    else:
+                        max_tokens_per_text = max(32, int(max_tokens_per_text * 0.8))
                     continue
             raise
         except BadRequestError as e:
